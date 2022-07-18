@@ -1,37 +1,56 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as RTC;
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:get_boilerplate/src/pages/home/widgets/remote_view_card.dart';
 import 'package:get_boilerplate/src/services/socket_emit.dart';
 import 'package:sdp_transform/sdp_transform.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 
-Map<String, dynamic> configuration = {
-  'iceServers': [
-    {"urls": "stun:stun.jacknathan.tk:3478"},
-    {
-      "urls": "turn:turn.jacknathan.tk:3478",
-      "username": "ducanhzed",
-      "credential": "1507200a",
-    },
-  ],
-  'sdpSemantics': "unified-plan",
-};
 
-Socket socket;
+
 
 class HomePage extends StatefulWidget {
+  Socket? socket;
+
   @override
   State<StatefulWidget> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> socketIdRemotes = [];
-  RTC.RTCPeerConnection _peerConnection;
-  RTC.MediaStream _localStream;
+  RTC.RTCPeerConnection? _peerConnection;
+  RTC.MediaStream? _localStream;
   RTC.RTCVideoRenderer _localRenderer = RTC.RTCVideoRenderer();
   bool _isSend = false;
   bool _isFrontCamera = true;
+
+
+  Map<String, dynamic> _iceServers = {
+    'iceServers': [
+      {'url': 'stun:stun.l.google.com:19302'},
+      /*
+       * turn server configuration example.
+      {
+        'url': 'turn:123.45.67.89:3478',
+        'username': 'change_to_real_user',
+        'credential': 'change_to_real_secret'
+      },
+      */
+    ]
+  };
+  String get sdpSemantics =>
+      RTC.WebRTC.platformIsWindows ? 'plan-b' : 'unified-plan';
+
+
+  final Map<String, dynamic> _dcConstraints = {
+    'mandatory': {
+      'OfferToReceiveAudio': false,
+      'OfferToReceiveVideo': false,
+    },
+    'optional': [],
+  };
+
 
   @override
   void initState() {
@@ -40,10 +59,14 @@ class _HomePageState extends State<HomePage> {
     _createPeerConnection().then(
       (pc) async {
         _peerConnection = pc;
-        _localStream = await _getUserMedia();
-        _localStream.getTracks().forEach((track) {
-          _peerConnection.addTrack(track, _localStream);
-        });
+        try{
+          _localStream = await _getUserMedia();
+          _localStream!.getTracks().forEach((track) {
+            _peerConnection!.addTrack(track, _localStream!);
+          });
+        }catch(e){
+
+        }
       },
     );
     connectAndListen();
@@ -51,22 +74,25 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _peerConnection.close();
-    _localStream.dispose();
+    _peerConnection?.close();
+    _localStream?.dispose();
     _localRenderer.dispose();
     super.dispose();
   }
 
   _switchCamera() async {
     if (_localStream != null) {
-      bool value = await _localStream.getVideoTracks()[0].switchCamera();
-      while (value == _isFrontCamera) value = await _localStream.getVideoTracks()[0].switchCamera();
+      bool value = await Helper.switchCamera(_localStream!.getVideoTracks()[0]);
+      while (value == _isFrontCamera) value = await Helper.switchCamera(_localStream!.getVideoTracks()[0]);
       _isFrontCamera = value;
     }
   }
 
   _createPeerConnectionAnswer(socketId) async {
-    RTC.RTCPeerConnection pc = await RTC.createPeerConnection(configuration);
+    RTC.RTCPeerConnection pc = await RTC.createPeerConnection({
+      ..._iceServers,
+      'sdpSemantics': "${sdpSemantics}",
+    });
 
     pc.onTrack = (track) {
       int index = socketIdRemotes.indexWhere((item) => item['socketId'] == socketId);
@@ -74,56 +100,38 @@ class _HomePageState extends State<HomePage> {
     };
 
     pc.onRenegotiationNeeded = () {
-      _createOfferForReceive(socketId);
+      _createOfferForReceive(socketId,'screen');
     };
 
     return pc;
   }
 
   void connectAndListen() async {
-    var urlConnectSocket = 'https://tugomu.tk';
-    socket =
+    var urlConnectSocket = 'http://127.0.0.1:5000';
+    // var urlConnectSocket = 'https://tugomu.tk';
+    widget.socket =
         io(urlConnectSocket, OptionBuilder().enableForceNew().setTransports(['websocket']).build());
-    socket.connect();
-    socket.onConnect((_) {
-      print('connected');
-
-      socket.on('NEW-PEER-SSC', (data) async {
-        String newUser = data['socketId'];
-        RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
-        await stream.initialize();
-        socketIdRemotes.add({
-          'socketId': newUser,
-          'pc': null,
-          'stream': stream,
-        });
-        _createPeerConnectionAnswer(newUser).then((pcRemote) {
-          socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
-          socketIdRemotes[socketIdRemotes.length - 1]['pc'].addTransceiver(
-            kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
-            init: RTC.RTCRtpTransceiverInit(
-              direction: RTC.TransceiverDirection.RecvOnly,
-            ),
-          );
-        });
+    if(widget.socket!=null){
+      final socket = widget.socket!;
+      print('socket.connect()');
+      socket.onConnectError((err){
+        print('onConnect::: onerror-${err}');
       });
 
-      socket.on('SEND-SSC', (data) {
-        List<String> listSocketId =
-            (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
-        listSocketId.asMap().forEach((index, user) async {
+      socket.onConnect((_) {
+        print('onConnect:::connected');
+        socket.on('NEW-PEER-SSC', (data) async {
+          String newUser = data['socketId'];
           RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
           await stream.initialize();
-          setState(() {
-            socketIdRemotes.add({
-              'socketId': user,
-              'pc': null,
-              'stream': stream,
-            });
+          socketIdRemotes.add({
+            'socketId': newUser,
+            'pc': null,
+            'stream': stream,
           });
-          _createPeerConnectionAnswer(user).then((pcRemote) {
-            socketIdRemotes[index]['pc'] = pcRemote;
-            socketIdRemotes[index]['pc'].addTransceiver(
+          _createPeerConnectionAnswer(newUser).then((pcRemote) {
+            socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
+            socketIdRemotes[socketIdRemotes.length - 1]['pc'].addTransceiver(
               kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
               init: RTC.RTCRtpTransceiverInit(
                 direction: RTC.TransceiverDirection.RecvOnly,
@@ -132,20 +140,47 @@ class _HomePageState extends State<HomePage> {
           });
         });
 
-        _setRemoteDescription(data['sdp']);
-      });
+        socket.on('SEND-SSC', (data) {
+          List<String> listSocketId =
+          (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
+          listSocketId.asMap().forEach((index, user) async {
+            RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
+            await stream.initialize();
+            setState(() {
+              socketIdRemotes.add({
+                'socketId': user,
+                'pc': null,
+                'stream': stream,
+              });
+            });
+            _createPeerConnectionAnswer(user).then((pcRemote) {
+              socketIdRemotes[index]['pc'] = pcRemote;
+              socketIdRemotes[index]['pc'].addTransceiver(
+                kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
+                init: RTC.RTCRtpTransceiverInit(
+                  direction: RTC.TransceiverDirection.RecvOnly,
+                ),
+              );
+            });
+          });
 
-      socket.on('RECEIVE-SSC', (data) {
-        int index = socketIdRemotes.indexWhere(
-          (element) => element['socketId'] == data['socketId'],
-        );
-        if (index != -1) {
-          _setRemoteDescriptionForReceive(index, data['sdp']);
-        }
-      });
-    });
+          _setRemoteDescription(data['sdp']);
+        });
 
-    socket.onDisconnect((_) => print('disconnect'));
+        socket.on('RECEIVE-SSC', (data) {
+          int index = socketIdRemotes.indexWhere(
+                (element) => element['socketId'] == data['socketId'],
+          );
+          if (index != -1) {
+            _setRemoteDescriptionForReceive(index, data['sdp']);
+          }
+        });
+
+      });
+      socket.connect();
+      socket.onDisconnect((_) =>  print('onConnect:::disconnected'));
+    }
+
   }
 
   initRenderers() async {
@@ -154,7 +189,7 @@ class _HomePageState extends State<HomePage> {
 
   void _setRemoteDescription(sdp) async {
     RTC.RTCSessionDescription description = new RTC.RTCSessionDescription(sdp, 'answer');
-    await _peerConnection.setRemoteDescription(description);
+    await _peerConnection?.setRemoteDescription(description);
   }
 
   void _setRemoteDescriptionForReceive(indexSocket, sdp) async {
@@ -163,23 +198,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   _createOffer() async {
-    RTC.RTCSessionDescription description = await _peerConnection.createOffer({
-      'offerToReceiveVideo': 1,
-      'offerToReceiveAudio': 1,
-    });
-    _peerConnection.setLocalDescription(description);
+    if(_peerConnection==null)return;
+    RTC.RTCSessionDescription description = await _peerConnection!.createOffer(
+        _dcConstraints
+    );
+    _peerConnection?.setLocalDescription(description);
     var session = parse(description.sdp.toString());
     String sdp = write(session, null);
     await sendSdpForBroadcast(sdp);
   }
 
-  _createOfferForReceive(String socketId) async {
+  _createOfferForReceive(String socketId,String media) async {
     int index = socketIdRemotes.indexWhere((item) => item['socketId'] == socketId);
     if (index != -1) {
-      RTC.RTCSessionDescription description = await socketIdRemotes[index]['pc'].createOffer({
-        'offerToReceiveVideo': 1,
-        'offerToReceiveAudio': 1,
-      });
+      RTC.RTCSessionDescription description = await socketIdRemotes[index]['pc'].createOffer(
+          media == 'data' ? _dcConstraints : {}
+      //     {
+      //   'offerToReceiveVideo': 1,
+      //   'offerToReceiveAudio': 1,
+      // }
+      );
       socketIdRemotes[index]['pc'].setLocalDescription(description);
       var session = parse(description.sdp.toString());
       String sdp = write(session, null);
@@ -189,14 +227,20 @@ class _HomePageState extends State<HomePage> {
 
   _createPeerConnection() async {
     final Map<String, dynamic> offerSdpConstraints = {
-      "mandatory": {
-        "OfferToReceiveAudio": true,
-        "OfferToReceiveVideo": true,
-      },
-      "optional": [],
+      // "mandatory": {
+      //   "OfferToReceiveAudio": true,
+      //   "OfferToReceiveVideo": true,
+      // },
+      'mandatory': {},
+      'optional': [
+        {'DtlsSrtpKeyAgreement': true},
+      ],
     };
 
-    RTC.RTCPeerConnection pc = await RTC.createPeerConnection(configuration, offerSdpConstraints);
+    RTC.RTCPeerConnection pc = await RTC.createPeerConnection({
+      ..._iceServers,
+      'sdpSemantics': "${sdpSemantics}",
+    }, offerSdpConstraints);
 
     pc.onRenegotiationNeeded = () {
       if (!_isSend) {
@@ -210,14 +254,14 @@ class _HomePageState extends State<HomePage> {
   Future sendSdpForBroadcast(
     String sdp,
   ) async {
-    SocketEmit().sendSdpForBroadcase(sdp);
+    SocketEmit(widget.socket).sendSdpForBroadcase(sdp);
   }
 
   Future sendSdpOnlyReceive(
     String sdp,
     String socketId,
   ) async {
-    SocketEmit().sendSdpForReceive(sdp, socketId);
+    SocketEmit(widget.socket).sendSdpForReceive(sdp, socketId);
   }
 
   _getUserMedia() async {
@@ -234,7 +278,7 @@ class _HomePageState extends State<HomePage> {
         'optional': [],
       },
     };
-    RTC.MediaStream stream = await RTC.navigator.getUserMedia(mediaConstraints);
+    RTC.MediaStream stream = await await RTC.navigator.mediaDevices.getUserMedia(mediaConstraints);
     setState(() {
       _localRenderer.srcObject = stream;
     });
@@ -243,8 +287,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   endCall() {
-    _peerConnection.close();
-    _localStream.dispose();
+    _peerConnection?.close();
+    _localStream?.dispose();
     _localRenderer.dispose();
   }
 
@@ -328,7 +372,7 @@ class _HomePageState extends State<HomePage> {
                                 child: Transform(
                                   transform: Matrix4.identity()..rotateY(0.0),
                                   alignment: FractionalOffset.center,
-                                  child: Texture(textureId: _localRenderer.textureId),
+                                  child: Texture(textureId: _localRenderer.textureId??0),
                                 ),
                               ),
                             ),
@@ -360,42 +404,7 @@ class _HomePageState extends State<HomePage> {
             ),
             Row(
               children: [
-                // Expanded(
-                //   flex: 1,
-                //   child: GestureDetector(
-                //     onTap: () async {
-                //       endCall();
-                //     },
-                //     child: Container(
-                //       height: size.width * .15,
-                //       decoration: BoxDecoration(
-                //         color: Colors.transparent,
-                //       ),
-                //       // child: Icon(
-                //       //   Icons.phone_missed,
-                //       //   color: Colors.white,
-                //       //   size: size.width / 14.0,
-                //       // ),
-                //     ),
-                //   ),
-                // ),
-                // Expanded(
-                //   flex: 1,
-                //   child: GestureDetector(
-                //     onTap: () async {},
-                //     child: Container(
-                //       height: size.width * .15,
-                //       decoration: BoxDecoration(
-                //         color: Colors.transparent,
-                //       ),
-                //       // child: Icon(
-                //       //   Icons.phone,
-                //       //   color: Colors.white,
-                //       //   size: size.width / 14.0,
-                //       // ),
-                //     ),
-                //   ),
-                // ),
+
               ],
             ),
           ],

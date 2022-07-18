@@ -6,7 +6,7 @@ const root_url = "domain_api.com";
 const socket_url = "domain_api.com";
 
 class HandleApis {
-  get(String name, [String params]) async {
+  get(String name, [String? params]) async {
     Map<String, String> paramsObject = {};
     if (params != null)
       params.split('&').forEach((element) {
@@ -37,7 +37,7 @@ class HandleApis {
     );
   }
 
-  delete(String name, {Map<String, dynamic> body}) async {
+  delete(String name, {Map<String, dynamic>? body}) async {
     return await http.delete(
       Uri.http(root_url, '/' + name),
       headers: getHeader(),
