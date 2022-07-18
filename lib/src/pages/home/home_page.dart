@@ -60,8 +60,8 @@ class _HomePageState extends State<HomePage> {
       (pc) async {
         _peerConnection = pc;
         try{
-          // _localStream = await _getUserMedia();
-          _localStream = await _getDisplayMedia();
+          _localStream = await _getUserMedia();
+          // _localStream = await _getDisplayMedia();
           _localStream!.getTracks().forEach((track) {
             _peerConnection!.addTrack(track, _localStream!);
           });
@@ -126,13 +126,16 @@ class _HomePageState extends State<HomePage> {
         socket.on('NEW-PEER-SSC', (data) async {
           print('NEW-PEER-SSC::${data}');
           String newUser = data['socketId'];
-          RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
-          await stream.initialize();
-          socketIdRemotes.add({
-            'socketId': newUser,
-            'pc': null,
-            'stream': stream,
+          RTC.RTCVideoRenderer renderer = new RTC.RTCVideoRenderer();
+          await renderer.initialize();
+          setState(() {
+            socketIdRemotes.add({
+              'socketId': newUser,
+              'pc': null,
+              'stream': renderer,
+            });
           });
+
           _createPeerConnectionAnswer(newUser).then((pcRemote) {
             socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
             pcRemote.addTransceiver(
@@ -149,13 +152,13 @@ class _HomePageState extends State<HomePage> {
           List<String> listSocketId =
           (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
           listSocketId.asMap().forEach((index, user) async {
-            RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
-            await stream.initialize();
+            RTC.RTCVideoRenderer renderer = new RTC.RTCVideoRenderer();
+            await renderer.initialize();
             setState(() {
               socketIdRemotes.add({
                 'socketId': user,
                 'pc': null,
-                'stream': stream,
+                'stream': renderer,
               });
             });
             _createPeerConnectionAnswer(user).then((pcRemote) {
@@ -330,7 +333,9 @@ class _HomePageState extends State<HomePage> {
                   width: size.width,
                   height: size.height,
                   child: socketIdRemotes.isEmpty
-                      ? Container()
+                      ? Container(
+                    color: Colors.red,
+                  )
                       : RemoteViewCard(
                           remoteRenderer: socketIdRemotes[0]['stream'],
                         ),

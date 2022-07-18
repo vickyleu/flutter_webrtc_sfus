@@ -79,7 +79,7 @@ async function createPeerConnectionReceive(sdp, socketId) {
 }
 
 io.on("connection", function (socket) {
-  console.log('connection:: %s', JSON.stringify(socket.sdp));
+  console.log('connection:: %s', JSON.stringify(socket.socketId));
   socket.on("SEND-CSS", async function (data) {
     console.log('SEND-CSS:: %s', JSON.stringify(data));
     const payload = await createPeerConnectionSend(data.sdp, socket.id);
