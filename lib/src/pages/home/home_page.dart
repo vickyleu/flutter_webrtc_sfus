@@ -224,12 +224,17 @@ class _HomePageState extends State<HomePage> {
     final Map<String, dynamic> mediaConstraints = {
       'audio': true,
       'video': {
+        'mandatory': {
+          'minWidth':
+          '640', // Provide your own width, height and frame rate here
+          'minHeight': '480',
+          'minFrameRate': '30',
+        },
         'facingMode': 'user',
+        'optional': [],
       },
     };
-
     RTC.MediaStream stream = await RTC.navigator.getUserMedia(mediaConstraints);
-
     setState(() {
       _localRenderer.srcObject = stream;
     });
