@@ -95,11 +95,13 @@ class _HomePageState extends State<HomePage> {
     });
 
     pc.onTrack = (track) {
+      print('onTrack::${track}');
       int index = socketIdRemotes.indexWhere((item) => item['socketId'] == socketId);
       socketIdRemotes[index]['stream'].srcObject = track.streams[0];
     };
 
     pc.onRenegotiationNeeded = () {
+      print('onRenegotiationNeeded');
       _createOfferForReceive(socketId,'screen');
     };
 
@@ -121,6 +123,7 @@ class _HomePageState extends State<HomePage> {
 
       socket.onConnect((_) {
         socket.on('NEW-PEER-SSC', (data) async {
+          print('NEW-PEER-SSC::${data}');
           String newUser = data['socketId'];
           RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
           await stream.initialize();
@@ -141,6 +144,7 @@ class _HomePageState extends State<HomePage> {
         });
 
         socket.on('SEND-SSC', (data) {
+          print('SEND-SSC::${data}');
           List<String> listSocketId =
           (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
           listSocketId.asMap().forEach((index, user) async {
@@ -168,6 +172,7 @@ class _HomePageState extends State<HomePage> {
         });
 
         socket.on('RECEIVE-SSC', (data) {
+          print('RECEIVE-SSC::${data}');
           int index = socketIdRemotes.indexWhere(
                 (element) => element['socketId'] == data['socketId'],
           );
