@@ -15,4 +15,8 @@ class SocketEmit {
       'socketId': socketId,
     });
   }
+
+  void dispose() async{
+    socket?.destroy();
+  }
 }

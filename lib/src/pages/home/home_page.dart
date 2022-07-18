@@ -11,13 +11,15 @@ import 'package:socket_io_client/socket_io_client.dart';
 
 
 class HomePage extends StatefulWidget {
-  Socket? socket;
 
   @override
   State<StatefulWidget> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
+
+  SocketEmit? socketEmit;
+
   List<Map<String, dynamic>> socketIdRemotes = [];
   RTC.RTCPeerConnection? _peerConnection;
   RTC.MediaStream? _localStream;
@@ -60,8 +62,8 @@ class _HomePageState extends State<HomePage> {
       (pc) async {
         _peerConnection = pc;
         try{
-          _localStream = await _getUserMedia();
-          // _localStream = await _getDisplayMedia();
+          // _localStream = await _getUserMedia();
+          _localStream = await _getDisplayMedia();
           _localStream!.getTracks().forEach((track) {
             _peerConnection!.addTrack(track, _localStream!);
           });
@@ -78,6 +80,7 @@ class _HomePageState extends State<HomePage> {
     _peerConnection?.close();
     _localStream?.dispose();
     _localRenderer.dispose();
+    socketEmit?.dispose();
     super.dispose();
   }
 
@@ -113,31 +116,54 @@ class _HomePageState extends State<HomePage> {
     var urlConnectSocket = 'http://192.168.1.20:5000';
     // var urlConnectSocket = 'http://127.0.0.1:5000';
     // var urlConnectSocket = 'https://tugomu.tk';
-    widget.socket =
-        io(urlConnectSocket, OptionBuilder().enableForceNew().setTransports(['websocket']).build());
-    if(widget.socket!=null){
-      final socket = widget.socket!;
-      print('socket.connect()');
-      socket.onConnectError((err){
-        print('onConnect::: onerror-${err}');
+    Socket socket = io(urlConnectSocket, OptionBuilder().enableForceNew().setTransports(['websocket']).build());
+    socketEmit = SocketEmit(socket);
+    print('socket.connect()');
+    socket.onConnectError((err){
+      print('onConnect::: onerror-${err}');
+    });
+
+    socket.onConnect((_) {
+      socket.on('NEW-PEER-SSC', (data) async {
+        print('NEW-PEER-SSC::${data} socket:${socket}');
+        String newUser = data['socketId'];
+        RTC.RTCVideoRenderer renderer = new RTC.RTCVideoRenderer();
+        await renderer.initialize();
+        setState(() {
+          socketIdRemotes.add({
+            'socketId': newUser,
+            'pc': null,
+            'stream': renderer,
+          });
+        });
+
+        _createPeerConnectionAnswer(newUser).then((pcRemote) {
+          socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
+          pcRemote.addTransceiver(
+            kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
+            init: RTC.RTCRtpTransceiverInit(
+              direction: RTC.TransceiverDirection.RecvOnly,
+            ),
+          );
+        });
       });
 
-      socket.onConnect((_) {
-        socket.on('NEW-PEER-SSC', (data) async {
-          print('NEW-PEER-SSC::${data}');
-          String newUser = data['socketId'];
+      socket.on('SEND-SSC', (data) {
+        print('SEND-SSC::${data}');
+        List<String> listSocketId =
+        (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
+        listSocketId.asMap().forEach((index, user) async {
           RTC.RTCVideoRenderer renderer = new RTC.RTCVideoRenderer();
           await renderer.initialize();
           setState(() {
             socketIdRemotes.add({
-              'socketId': newUser,
+              'socketId': user,
               'pc': null,
               'stream': renderer,
             });
           });
-
-          _createPeerConnectionAnswer(newUser).then((pcRemote) {
-            socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
+          _createPeerConnectionAnswer(user).then((pcRemote) {
+            socketIdRemotes[index]['pc'] = pcRemote;
             pcRemote.addTransceiver(
               kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
               init: RTC.RTCRtpTransceiverInit(
@@ -147,49 +173,22 @@ class _HomePageState extends State<HomePage> {
           });
         });
 
-        socket.on('SEND-SSC', (data) {
-          print('SEND-SSC::${data}');
-          List<String> listSocketId =
-          (data['sockets'] as List<dynamic>).map((e) => e.toString()).toList();
-          listSocketId.asMap().forEach((index, user) async {
-            RTC.RTCVideoRenderer renderer = new RTC.RTCVideoRenderer();
-            await renderer.initialize();
-            setState(() {
-              socketIdRemotes.add({
-                'socketId': user,
-                'pc': null,
-                'stream': renderer,
-              });
-            });
-            _createPeerConnectionAnswer(user).then((pcRemote) {
-              socketIdRemotes[index]['pc'] = pcRemote;
-              pcRemote.addTransceiver(
-                kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
-                init: RTC.RTCRtpTransceiverInit(
-                  direction: RTC.TransceiverDirection.RecvOnly,
-                ),
-              );
-            });
-          });
-
-          _setRemoteDescription(data['sdp']);
-        });
-
-        socket.on('RECEIVE-SSC', (data) {
-          print('RECEIVE-SSC::${data}');
-          int index = socketIdRemotes.indexWhere(
-                (element) => element['socketId'] == data['socketId'],
-          );
-          if (index != -1) {
-            _setRemoteDescriptionForReceive(index, data['sdp']);
-          }
-        });
-
+        _setRemoteDescription(data['sdp']);
       });
-      socket.connect();
-      socket.onDisconnect((_) =>  print('onConnect:::disconnected'));
-    }
 
+      socket.on('RECEIVE-SSC', (data) {
+        print('RECEIVE-SSC::${data} socket:${socket}');
+        int index = socketIdRemotes.indexWhere(
+              (element) => element['socketId'] == data['socketId'],
+        );
+        if (index != -1) {
+          _setRemoteDescriptionForReceive(index, data['sdp']);
+        }
+      });
+
+    });
+    socket.connect();
+    socket.onDisconnect((_) =>  print('onConnect:::disconnected'));
   }
 
   initRenderers() async {
@@ -233,6 +232,7 @@ class _HomePageState extends State<HomePage> {
       peerConnection.setLocalDescription(description);
       var session = parse(description.sdp.toString());
       String sdp = write(session, null);
+      print('socket:${socketEmit}');
       await sendSdpOnlyReceive(sdp, socketId);
     }
   }
@@ -266,14 +266,14 @@ class _HomePageState extends State<HomePage> {
   Future sendSdpForBroadcast(
     String sdp,
   ) async {
-    SocketEmit(widget.socket).sendSdpForBroadcase(sdp);
+    socketEmit?.sendSdpForBroadcase(sdp);
   }
 
   Future sendSdpOnlyReceive(
     String sdp,
     String socketId,
   ) async {
-    SocketEmit(widget.socket).sendSdpForReceive(sdp, socketId);
+    socketEmit?.sendSdpForReceive(sdp, socketId);
   }
   _getDisplayMedia() async{
     final Map<String, dynamic> mediaConstraints = {
