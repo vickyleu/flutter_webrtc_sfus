@@ -88,7 +88,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  _createPeerConnectionAnswer(socketId) async {
+  Future<RTC.RTCPeerConnection> _createPeerConnectionAnswer(socketId) async {
     RTC.RTCPeerConnection pc = await RTC.createPeerConnection({
       ..._iceServers,
       'sdpSemantics': "${sdpSemantics}",
@@ -120,7 +120,6 @@ class _HomePageState extends State<HomePage> {
       });
 
       socket.onConnect((_) {
-        print('onConnect:::connected');
         socket.on('NEW-PEER-SSC', (data) async {
           String newUser = data['socketId'];
           RTC.RTCVideoRenderer stream = new RTC.RTCVideoRenderer();
@@ -132,7 +131,7 @@ class _HomePageState extends State<HomePage> {
           });
           _createPeerConnectionAnswer(newUser).then((pcRemote) {
             socketIdRemotes[socketIdRemotes.length - 1]['pc'] = pcRemote;
-            socketIdRemotes[socketIdRemotes.length - 1]['pc'].addTransceiver(
+            pcRemote.addTransceiver(
               kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
               init: RTC.RTCRtpTransceiverInit(
                 direction: RTC.TransceiverDirection.RecvOnly,
@@ -156,7 +155,7 @@ class _HomePageState extends State<HomePage> {
             });
             _createPeerConnectionAnswer(user).then((pcRemote) {
               socketIdRemotes[index]['pc'] = pcRemote;
-              socketIdRemotes[index]['pc'].addTransceiver(
+              pcRemote.addTransceiver(
                 kind: RTC.RTCRtpMediaType.RTCRtpMediaTypeVideo,
                 init: RTC.RTCRtpTransceiverInit(
                   direction: RTC.TransceiverDirection.RecvOnly,
@@ -212,8 +211,11 @@ class _HomePageState extends State<HomePage> {
   _createOfferForReceive(String socketId,String media) async {
     int index = socketIdRemotes.indexWhere((item) => item['socketId'] == socketId);
     if (index != -1) {
-      RTC.RTCSessionDescription description = await socketIdRemotes[index]['pc'].createOffer(
+      RTCPeerConnection? peerConnection = socketIdRemotes[index]['pc'] as RTCPeerConnection?;
+      if(peerConnection==null)return;
+      RTC.RTCSessionDescription description = await peerConnection.createOffer(
           media == 'data' ? _dcConstraints : {}
+           // _dcConstraints
       //     {
       //   'offerToReceiveVideo': 1,
       //   'offerToReceiveAudio': 1,

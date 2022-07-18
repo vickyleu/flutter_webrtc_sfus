@@ -34,7 +34,7 @@ async function createPeerConnectionSend(sdp, socketId) {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });
@@ -55,7 +55,7 @@ async function createPeerConnectionReceive(sdp, socketId) {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });
@@ -79,7 +79,9 @@ async function createPeerConnectionReceive(sdp, socketId) {
 }
 
 io.on("connection", function (socket) {
+  console.log('connection:: %s', JSON.stringify(socket.sdp));
   socket.on("SEND-CSS", async function (data) {
+    console.log('SEND-CSS:: %s', JSON.stringify(data));
     const payload = await createPeerConnectionSend(data.sdp, socket.id);
     const listSocketId = senderStreams
       .filter((e) => e.socketId != socket.id)
@@ -95,7 +97,7 @@ io.on("connection", function (socket) {
   });
 
   socket.on("RECEIVE-CSS", async function (data) {
-    console.log(data.socketId);
+    console.log('RECEIVE-CSS:: %s', JSON.stringify(data));
     const payload = await createPeerConnectionReceive(data.sdp, data.socketId);
     io.to(socket.id).emit("RECEIVE-SSC", {
       socketId: data.socketId,
@@ -104,6 +106,7 @@ io.on("connection", function (socket) {
   });
 
   socket.on("disconnect", function () {
+    console.log('disconnect:: ');
     senderStreams = senderStreams.filter((e) => e.socketId !== socket.id);
   });
 });
@@ -112,7 +115,7 @@ app.post("/broadcast", async ({ body }, res) => {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });
@@ -133,7 +136,7 @@ app.post("/consumer", async ({ body }, res) => {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });

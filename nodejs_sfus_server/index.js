@@ -13,7 +13,7 @@ app.post("/consumer", async ({ body }, res) => {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });
@@ -36,7 +36,7 @@ app.post("/broadcast", async ({ body }, res) => {
   const peer = new webrtc.RTCPeerConnection({
     iceServers: [
       {
-        urls: "stun:stun.stunprotocol.org",
+        urls: "stun:stun.l.google.com:19302",
       },
     ],
   });
