@@ -60,7 +60,8 @@ class _HomePageState extends State<HomePage> {
       (pc) async {
         _peerConnection = pc;
         try{
-          _localStream = await _getUserMedia();
+          // _localStream = await _getUserMedia();
+          _localStream = await _getDisplayMedia();
           _localStream!.getTracks().forEach((track) {
             _peerConnection!.addTrack(track, _localStream!);
           });
@@ -226,7 +227,7 @@ class _HomePageState extends State<HomePage> {
       //   'offerToReceiveAudio': 1,
       // }
       );
-      socketIdRemotes[index]['pc'].setLocalDescription(description);
+      peerConnection.setLocalDescription(description);
       var session = parse(description.sdp.toString());
       String sdp = write(session, null);
       await sendSdpOnlyReceive(sdp, socketId);
@@ -271,7 +272,18 @@ class _HomePageState extends State<HomePage> {
   ) async {
     SocketEmit(widget.socket).sendSdpForReceive(sdp, socketId);
   }
+  _getDisplayMedia() async{
+    final Map<String, dynamic> mediaConstraints = {
+      'audio': false,
+      'video': {'deviceId':{'exact':(await desktopCapturer.getSources(types: [SourceType.Window])).first.id}},
+    };
+    RTC.MediaStream stream = await await RTC.navigator.mediaDevices.getUserMedia(mediaConstraints);
+    setState(() {
+      _localRenderer.srcObject = stream;
+    });
 
+    return stream;
+  }
   _getUserMedia() async {
     final Map<String, dynamic> mediaConstraints = {
       'audio': true,
@@ -420,4 +432,6 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+
 }
