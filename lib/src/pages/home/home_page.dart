@@ -107,7 +107,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   void connectAndListen() async {
-    var urlConnectSocket = 'http://127.0.0.1:5000';
+    var urlConnectSocket = 'http://192.168.1.20:5000';
+    // var urlConnectSocket = 'http://127.0.0.1:5000';
     // var urlConnectSocket = 'https://tugomu.tk';
     widget.socket =
         io(urlConnectSocket, OptionBuilder().enableForceNew().setTransports(['websocket']).build());
